@@ -1,1 +1,11 @@
+Script 
+uint16_t (*CHud_DrawVitalStats)(uintptr_t thiz);
+uint16_t CHud_DrawVitalStats_hook(uintptr_t thiz)
+{
+    if(pScoreBoard)
+        pScoreBoard->Toggle();
+    
+    return 0;
+}
 
+SetUpHook(g_libGTASA+0x3D4EAC, (uintptr_t)CHud_DrawVitalStats_hook, (uintptr_t*)&CHud_DrawVitalStats);
