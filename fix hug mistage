@@ -1,0 +1,160 @@
+/* Comment this line to disable some features */
+#define ACCLIB_AUTO_FETCH_ACCOUNT // Will automatically fetch account data from databse during OnPlayerConnect
+#define ACCLIB_AUTO_KICK_ON_ERROR // Will kick player when there is an error
+#define ACCLIB_ALLOW_MULTI_USER // Will allow multiple user with same Accounts
+#define ACCLIB_DEBUG_MODE // Enable debug mode
+
+#include <open.mp> // or a_samp or you can just don't include this
+#include <account-lib>
+
+#define MAX_WRONG_PASSWORD          3
+#define MINIMUM_REQUIRED_PASSWORD   8
+
+#include <YSI_Visual\y_dialog>
+
+static 
+	g_sPlayerLoginAttempts[MAX_PLAYERS];
+
+// From: https://gist.github.com/Vince0789/e7982372320b03819b72d3536627e880
+MySQL:GetMySQLConnection()
+{
+	new MySQL:handle = MySQL:getproperty(.name = "gDatabaseHandle");
+
+	if(handle == MYSQL_INVALID_HANDLE)
+	{
+		handle = mysql_connect_file();
+		setproperty(.name = "gDatabaseHandle", .value = _:handle);
+
+		if(mysql_errno(handle) == 0)
+		{
+			mysql_set_charset("utf8mb4", handle);
+			mysql_tquery(handle, "SET @@SESSION.time_zone = '+00:00';"); 
+			mysql_tquery(handle, "\
+				SELECT CONCAT_WS(' ', 'Your MySQL connection id is', CONNECTION_ID()) \
+				UNION \
+				SELECT CONCAT_WS(' ', 'Server version:', @@version, @@version_comment);", 
+				"OnVersionInformationAvailable", "d", _:handle
+			);
+		}
+	}
+	return handle;
+}
+
+public OnVersionInformationAvailable(MySQL:handle)
+{
+	new versionText[64];
+
+	cache_get_value_index(0, 0, versionText);
+	printf("\n[info] %s", versionText);
+
+	cache_get_value_index(1, 0, versionText);
+	printf("[info] %s\n", versionText);
+}
+
+public OnGameModeInit()
+{
+	print("Connecting to MySQL service...");
+
+	/*
+		Explanation:
+		This function will try to link the following table:
+		`accounts`
+		And also will link the following row from the table:
+		`id`
+		`name`
+		`password`
+		into the AccLib system from the database, you can just do this:
+		AccLib_Init(GetMySQLConnection());
+		if you want the AccLib system to create the table with rows if you wish to do so.
+		Make sure if you want to use the function below, the following names above must
+		present in your database!
+	*/
+	AccLib_Init(GetMySQLConnection(), "accounts", "id", "name", "password");
+	return 1;
+}
+
+main()
+{
+	printf("Account system by Aiura");
+}
+
+public OnPlayerConnect(playerid)
+{
+	new hour, minute;
+	gettime(hour, minute, _);
+	SetPlayerTime(playerid, hour, minute);
+	TogglePlayerSpectating(playerid, true);
+	return 1;
+}
+
+// This function would be called automatically when the data is successfully fetched from the database
+public OnAccountFetched(playerid, bool:success)
+{
+	new 
+		string:szDialogFormat[128],
+		string:name[MAX_PLAYER_NAME + 1];
+
+	GetPlayerName(playerid, name, sizeof(name));
+
+	// If the fetching data is success, we can prompt login to player
+	if (success)
+	{
+		// This is inline function, is pretty much useful tool
+		inline dialogLoginRespond(response, listitem, string:inputtext[])
+		{
+			// We must use this, if the argument is not used
+			#pragma unused listitem
+
+			// Kick player if they pressed "Abort" or pressed "Esc" on their keyboard
+			if (!response)
+			{
+				return DelayedKick(playerid);
+			}
+
+			// If the input is null, we can check if player do this on purposes or not.
+			if (IsNull(inputtext))
+			{
+				if (++ g_sPlayerLoginAttempts[playerid] >= MAX_WRONG_PASSWORD)
+				{
+					Dialog_Show(playerid, "Login", "You have mistyped your password too often (3 times).", "Okay", "");
+					DelayedKick(playerid);
+				}
+				else
+				{
+					Dialog_ShowCallback(playerid, using inline dialogLoginRespond, DIALOG_STYLE_PASSWORD, "Login", "Invalid password specified!\nPlease enter your password in the field below:", "Login", "Abort");
+				}
+				return 1;
+			}
+
+			// After all of this done, if you think it's safe, you can call this function for the AccLib to process login.
+			AccLib_LoginPlayer(playerid, inputtext);
+		}
+
+		// We format it first, and then call the dialog and put the results into the inline above.
+		format(szDialogFormat, sizeof szDialogFormat, "This account (%s) is registered. Please login by entering your password in the field below:", name);
+		Dialog_ShowCallback(playerid, using inline dialogLoginRespond, DIALOG_STYLE_PASSWORD, "Login", szDialogFormat, "Login", "Abort");
+		return 1;
+	}
+	// but, if the fetching data is failed, it means player is not registered in our server.
+	// Which you can do pretty much tell player to register here
+
+	// This is inline function, is pretty much useful tool
+	inline dialogRegisterRespond(response, listitem, string:inputtext[])
+	{
+		// We must use this, if the argument is not used
+		#pragma unused listitem
+
+		// Kick player if they pressed "Abort" or pressed "Esc" on their keyboard
+		if (!response)
+		{
+			return DelayedKick(playerid);
+		}
+
+		// If the input is less than minimum required password that we set, tell them to put more effort making strong password!
+		if (strlen(inputtext) <= MINIMUM_REQUIRED_PASSWORD)
+		{
+			Dialog_ShowCallback(playerid, using inline dialogRegisterRespond, DIALOG_STYLE_PASSWORD, "Registration", "Your password must be longer than "#MINIMUM_REQUIRED_PASSWORD" characters!\nPlease enter your password in the field below:", "Register", "Abort");
+
+/* Comment this line to disable some features */
+#define ACCLIB_AUTO_FETCH_ACCOUNT // Will automatically fetch account data from databse during OnPlayerConnect
+#define ACCLIB_AUTO_KICK_ON_ERROR // Will kick player when there is an error
